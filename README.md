@@ -1,5 +1,6 @@
 # WellSky Resource Manager Reports Macros
 Excel VBA macros for making WellSky Resource Management reports useable.
+
 ![Licensed under GNU GPLv3](https://img.shields.io/badge/license-GNU%20GPLv3-brightgreen)
 
 ## How to Install 
