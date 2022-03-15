@@ -55,9 +55,10 @@ Sub WellSky_Create_Participant_Information_Report()
     
     ' Set the new file name, saveAs the file, and open it back up
     newFileName = shtName & "_RunOn_" & dateOfReport & ".xlsx"
-    newFullFileName = Left(ActiveWorkbook.FullName, Len(ActiveWorkbook.Name) + 1) & newFileName ' <-- <-- <-- <-- <-- THIS IS WRONG
+    newFullFileName = ActiveWorkbook.Path & Application.PathSeparator & newFileName
     ActiveWorkbook.SaveAs fileName:=newFullFileName, FileFormat:=xlOpenXMLWorkbook, CreateBackup:=False
     Workbooks.Open fileName:=newFullFileName
+    MsgBox newFullFileName
     'Workbooks(newFileName).Activate
 
     ' Next we format the "link sheet" so we can use it later
@@ -98,7 +99,6 @@ Sub WellSky_Create_Participant_Information_Report()
         lastRowNum = .Cells(.Rows.Count, "E").End(xlUp).Row
     End With
     Range(Cells(1, 1), Cells(lastRowNum, lastColNum)).Select
-    'Application.CutCopyMode = False
     ActiveSheet.ListObjects.Add(xlSrcRange, Selection, , xlYes).Name = tblName
     ActiveSheet.ListObjects(tblName).TableStyle = "TableStyleMedium15"
     Selection.Columns.AutoFit
@@ -430,7 +430,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     Dim dateOfReport, newFileName, newFullFileName As String
     Dim currentRow As Long
     Dim lastRowNum As Long
-    Dim lastRowNum_preDeDup As Long
+    Dim amtReconciled As Long
     
     ' Get the date that the report was run from cel Q12. Set the table name to _
         "AppointmentActivity_RunOn_{date}" to use later
@@ -446,13 +446,13 @@ Sub WellSky_CleanReport_AppointmentActivity()
     
     ' ==============================================================================================================================
     MsgBox "The file will be renamed to """ & shtName & "_RunOn_" & dateOfReport & _
-        ".xlsx"" and then the date the report was run.", , shtName & ": Rename File"
+        ".xlsx"".", , shtName & ": Rename File"
     ' ==============================================================================================================================
     
     ' Set the new file name, saveAs the file, and open it back up
     Sheets(1).Name = shtName
     newFileName = shtName & "_RunOn_" & dateOfReport & ".xlsx"
-    newFullFileName = ActiveWorkbook.Path & "\" & newFileName
+    newFullFileName = ActiveWorkbook.Path & Application.PathSeparator & newFileName
     ActiveWorkbook.SaveAs fileName:=newFullFileName, FileFormat:=xlOpenXMLWorkbook, CreateBackup:=False
     Workbooks.Open fileName:=newFullFileName
     Workbooks(newFileName).Activate
@@ -481,40 +481,43 @@ Sub WellSky_CleanReport_AppointmentActivity()
         lastRowNum = .Cells(.Rows.Count, "A").End(xlUp).Row
     End With
     Range(Cells(1, 1), Cells(lastRowNum, 4)).Select ' columns A-D
-    Application.CutCopyMode = False
     ActiveSheet.ListObjects.Add(xlSrcRange, Selection, , xlYes).Name = tblName
     ActiveSheet.ListObjects(tblName).TableStyle = "TableStyleMedium15"
     Selection.Columns.AutoFit
+    Range("A1:A" & lastRowNum).Select
+    With Selection
+        Selection.NumberFormat = "General"
+        .Value = .Value
+    End With
+    Selection.NumberFormat = "0"
     Range("A1").Select
     
     ' ==============================================================================================================================
-    MsgBox "Next we'll check for multiple procedure codes per visit. We'll combine appointments with multiple procedure codes. " _
-        & "Note: This may take awhile depending on how many entries the report has." & vbNewLine _
+    MsgBox "Next we'll check for multiple procedure codes per visit. If there are, we will fill in the PttID, Date, and Status for each." _
+        & vbNewLine & "Note: This may take awhile depending on how many entries the report has." & vbNewLine _
         & "(The report has " & lastRowNum - 1 & " entries)" _
         , , shtName & ": Step 2"
     ' ==============================================================================================================================
     
     ' Add multiple procedure codes to one row
+    Rows("1:" & lastRowNum).EntireRow.RowHeight = 15.6
     Range("A2").Select
-    lastRowNum_preDeDup = lastRowNum
+    amtReconciled = 0
     Do While ActiveCell.Row <= lastRowNum
         currentRow = ActiveCell.Row
         If IsEmpty(ActiveCell.Value) Then
-            Cells(currentRow - 1, 4).Value = Replace(Cells(currentRow - 1, 4).Value, ",", "") & " | " & Replace(Cells(currentRow, 4).Value, ",", "")
-            With Cells(currentRow - 1, 4).Interior
-                .Pattern = xlSolid
-                .PatternColorIndex = xlAutomatic
-                .Color = 65535
-                .TintAndShade = 0
-                .PatternTintAndShade = 0
-            End With
-            ActiveCell.EntireRow.Delete
-            lastRowNum = lastRowNum - 1
-        Else
-            ActiveCell.Offset(1, 0).Select
+            Cells(currentRow - 1, 4).Value = Left(Cells(currentRow - 1, 4).Value, Len(Cells(currentRow - 1, 4).Value) - 1)
+            Range(Cells(currentRow - 1, 1), Cells(currentRow - 1, 3)).Select
+            Selection.Copy
+            Cells(currentRow, 1).Select
+            ActiveSheet.Paste
+            Application.CutCopyMode = False
+            Cells(currentRow, 1).Select
+            amtReconciled = amtReconciled + 1
         End If
+        ActiveCell.Offset(1, 0).Select
     Loop
-    MsgBox "Reconciled " & lastRowNum_preDeDup - lastRowNum & " multiple procedure codes.", , shtName & ": Step 2"
+    MsgBox "Reconciled " & amtReconciled & " appointment(s) with multiple procedure codes.", , shtName & ": Step 2"
     
     ' ==============================================================================================================================
     MsgBox "Now going to format the dates, because WellSky couldn't be bothered to give us properly-formatted dates " _
