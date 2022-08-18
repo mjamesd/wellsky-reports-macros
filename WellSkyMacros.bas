@@ -9,6 +9,7 @@ Sub WellSky_Create_Participant_Information_Report()
 '
 ' WellSky_Create_Participant_Information_Report Macro
 '
+    xTitleId = "Create Participant Information Report"
 
     ' Declare variables
     Dim dateOfReport, newFileName, newFullFileName, tempFname, tempLname, Address1, Address2, CSZ, City, State, Zipcode As String
@@ -424,6 +425,8 @@ Sub WellSky_CleanReport_AppointmentActivity()
 '
 ' WellSky_AppointmentActivity Macro
 '
+    xTitleId = "Clean Report: Appointment Activity"
+    
     ' Declare variables
     Const tblName As String = "tblAppointmentActivity"
     Const shtName As String = "Appointment Activity Report"
@@ -445,8 +448,8 @@ Sub WellSky_CleanReport_AppointmentActivity()
     dateOfReport = Selection
     
     ' ==============================================================================================================================
-    MsgBox "The file will be renamed to """ & shtName & "_RunOn_" & dateOfReport & _
-        ".xlsx"".", , shtName & ": Rename File"
+'    MsgBox "The file will be renamed to """ & shtName & "_RunOn_" & dateOfReport & _
+'        ".xlsx"".", , shtName & ": Rename File"
     ' ==============================================================================================================================
     
     ' Set the new file name, saveAs the file, and open it back up
@@ -458,7 +461,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     Workbooks(newFileName).Activate
     
     ' ==============================================================================================================================
-    MsgBox "First we will format report.", , shtName & ": Step 1"
+'    MsgBox "First we will format report.", , shtName & ": Step 1"
     ' ==============================================================================================================================
     
     ' Clean up report
@@ -470,61 +473,82 @@ Sub WellSky_CleanReport_AppointmentActivity()
     Rows("1:1").Select
     Selection.SpecialCells(xlCellTypeBlanks).Select
     Selection.EntireColumn.Delete
-    Columns("B:B").EntireColumn.Delete ' Delete participant names
-    Columns("D:D").Select ' Use column D in case an appointment has more than one procedure code.
+    Columns("B:B").Select
+    Selection.Cut
+    Columns("A:A").Select
+    Selection.Insert Shift:=xlToRight
+    'Columns("B:B").EntireColumn.Delete ' Delete participant names
+    'Columns("D:D").Select ' Use column D in case an appointment has more than one procedure code.
+    Columns("E:E").Select ' Use column E in case an appointment has more than one procedure code.
     Selection.SpecialCells(xlCellTypeBlanks).Select
     Selection.EntireRow.Delete
     ' Make report into an Excel table so we can filter, etc.
-    Range("A1").Select
+    Range("B1").Select 'column header for Ptt ID
     ActiveCell.Value = "Ptt ID"
     With Application.ActiveSheet
-        lastRowNum = .Cells(.Rows.Count, "A").End(xlUp).Row
+        lastRowNum = .Cells(.Rows.Count, "A").End(xlUp).Row ' either col A or B for this
     End With
-    Range(Cells(1, 1), Cells(lastRowNum, 4)).Select ' columns A-D
+    Range(Cells(1, 1), Cells(lastRowNum, 5)).Select ' columns A-E
     ActiveSheet.ListObjects.Add(xlSrcRange, Selection, , xlYes).Name = tblName
     ActiveSheet.ListObjects(tblName).TableStyle = "TableStyleMedium15"
     Selection.Columns.AutoFit
-    Range("A1:A" & lastRowNum).Select
+    ' Format Ptt ID as "General"
+    Range("B1:B" & lastRowNum).Select
     With Selection
         Selection.NumberFormat = "General"
         .Value = .Value
     End With
     Selection.NumberFormat = "0"
-    Range("A1").Select
+    ' format row height for all rows in table
+    Rows("1:" & lastRowNum).EntireRow.RowHeight = 15.6
     
     ' ==============================================================================================================================
-    MsgBox "Next we'll check for multiple procedure codes per visit. If there are, we will fill in the PttID, Date, and Status for each." _
-        & vbNewLine & "Note: This may take awhile depending on how many entries the report has." & vbNewLine _
-        & "(The report has " & lastRowNum - 1 & " entries)" _
-        , , shtName & ": Step 2"
+'    MsgBox "Next we'll check for multiple procedure codes per visit. If there are, we will fill in the PttID, Date, and Status for each." _
+'        & vbNewLine & "Note: This may take awhile depending on how many entries the report has." & vbNewLine _
+'        & "(The report has " & lastRowNum - 1 & " entries)" _
+'        , , shtName & ": Step 2"
     ' ==============================================================================================================================
     
     ' Add multiple procedure codes to one row
-    Rows("1:" & lastRowNum).EntireRow.RowHeight = 15.6
-    Range("A2").Select
+    Range("B2").Select
     amtReconciled = 0
     Do While ActiveCell.Row <= lastRowNum
         currentRow = ActiveCell.Row
         If IsEmpty(ActiveCell.Value) Then
-            Cells(currentRow - 1, 4).Value = Left(Cells(currentRow - 1, 4).Value, Len(Cells(currentRow - 1, 4).Value) - 1)
-            Range(Cells(currentRow - 1, 1), Cells(currentRow - 1, 3)).Select
-            Selection.Copy
-            Cells(currentRow, 1).Select
-            ActiveSheet.Paste
-            Application.CutCopyMode = False
-            Cells(currentRow, 1).Select
-            amtReconciled = amtReconciled + 1
+            If IsEmpty(Cells(currentRow, 1).Value) And IsEmpty(Cells(currentRow, 3).Value) And IsEmpty(Cells(currentRow, 4).Value) Then
+                ' If so, this is another procedure code on this appointment, so copy ptt info from row above
+                Cells(currentRow - 1, 5).Value = Left(Cells(currentRow - 1, 5).Value, Len(Cells(currentRow - 1, 5).Value) - 1) 'remove comma
+                Range(Cells(currentRow - 1, 1), Cells(currentRow - 1, 4)).Select
+                Selection.Copy
+                Cells(currentRow, 1).Select
+                ActiveSheet.Paste
+                Application.CutCopyMode = False
+                Cells(currentRow, 2).Select ' reset selected cell to col B
+                amtReconciled = amtReconciled + 1
+            Else
+                'If this is a separate appt but we don't have the PttID, use the subject's name and color the cell red.
+                ActiveCell.Value = Cells(currentRow, 1).Value
+                With ActiveCell.Interior
+                    .Pattern = xlSolid
+                    .PatternColorIndex = xlAutomatic
+                    .Color = 255
+                    .TintAndShade = 0
+                    .PatternTintAndShade = 0
+                End With
+                Cells(currentRow, 2).Select ' reset selected cell to col B
+            End If
         End If
         ActiveCell.Offset(1, 0).Select
     Loop
-    MsgBox "Reconciled " & amtReconciled & " appointment(s) with multiple procedure codes.", , shtName & ": Step 2"
+'    MsgBox "Reconciled " & amtReconciled & " appointment(s) with multiple procedure codes.", , shtName & ": Step 2"
     
     ' ==============================================================================================================================
-    MsgBox "Now going to format the dates, because WellSky couldn't be bothered to give us properly-formatted dates " _
-        & " even though we pay them over $10,000 a year.", , shtName & ": Step 3"
+'    MsgBox "Now going to format the dates, because WellSky couldn't be bothered to give us properly-formatted dates " _
+'        & " even though we pay them over $10,000 a year.", , shtName & ": Step 3"
     ' ==============================================================================================================================
     
     ' Format Dates
+    Columns("A:A").EntireColumn.Delete ' Delete participant names
     Columns("C:C").Select
     Selection.Insert Shift:=xlToRight, CopyOrigin:=xlFormatFromLeftOrAbove
     Range("C2").Select
@@ -546,7 +570,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     Range("A1").Select
     
     ' ==============================================================================================================================
-    MsgBox "Next, we will conditionally format the ""Status"" column.", , shtName & ": Step 4"
+'    MsgBox "Next, we will conditionally format the ""Status"" column.", , shtName & ": Step 4"
     ' ==============================================================================================================================
     
     ' Conditional formatting for Status column (column C/#3)
@@ -581,7 +605,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     Selection.FormatConditions(1).StopIfTrue = False
     
     ' ==============================================================================================================================
-    MsgBox "Lastly, we will format the report and add our own header.", , shtName & ": Step 5"
+'    MsgBox "Lastly, we will format the report and add our own header.", , shtName & ": Step 5"
     ' ==============================================================================================================================
     
     ' Next, format the table...
@@ -629,7 +653,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     ' The original report is just so awful.
     ' Did they /intentionally/ do it so you can't get your own data out of their system?
     ' Or are they just idiots?
-    MsgBox "The process is complete.", , shtName & ": Formatted for, Like, _Actual_ Use"
+    MsgBox "The process is complete.", , shtName & ": Formatted for, Like, *Actual* Use"
     
     
 End Sub
