@@ -29,12 +29,12 @@ Sub WellSky_Create_Participant_Information_Report()
     End If
     
     ' ==============================================================================================================================
-    MsgBox "The file will be renamed to """ & shtName & "_RunOn_" & """ and then the date the report was run.", , shtName & ": Rename File"
-    MsgBox "First we will format the participants' information:" & vbNewLine _
-        & "1. First and last names" & vbNewLine _
-        & "2. Calculate their age based on the date the report is viewed" & vbNewLine _
-        & "3. Add the Participant IDs (Ptt ID)" & vbNewLine _
-        & "4. Add sexes at birth.", , shtName & ": Step 1"
+    'MsgBox "The file will be renamed to """ & shtName & "_RunOn_" & """ and then the date the report was run.", , shtName & ": Rename File"
+    'MsgBox "First we will format the participants' information:" & vbNewLine _
+    '    & "1. First and last names" & vbNewLine _
+    '    & "2. Calculate their age based on the date the report is viewed" & vbNewLine _
+    '    & "3. Add the Participant IDs (Ptt ID)" & vbNewLine _
+    '    & "4. Add sexes at birth.", , shtName & ": Step 1"
     ' ==============================================================================================================================
     
     
@@ -59,8 +59,6 @@ Sub WellSky_Create_Participant_Information_Report()
     newFullFileName = ActiveWorkbook.Path & Application.PathSeparator & newFileName
     ActiveWorkbook.SaveAs fileName:=newFullFileName, FileFormat:=xlOpenXMLWorkbook, CreateBackup:=False
     Workbooks.Open fileName:=newFullFileName
-    MsgBox newFullFileName
-    'Workbooks(newFileName).Activate
 
     ' Next we format the "link sheet" so we can use it later
     Sheets(shtLinkName).Select
@@ -90,8 +88,8 @@ Sub WellSky_Create_Participant_Information_Report()
     Rows("1:1").Select
     Selection.SpecialCells(xlCellTypeBlanks).Select
     Selection.EntireColumn.Delete
-    Columns("E:E").Select ' Use column E in case a patient's address takes more than one line.
-    Selection.SpecialCells(xlCellTypeBlanks).Select
+    ' First row of data is always blank, delete it
+    Rows("2:2").Select
     Selection.EntireRow.Delete
     
     ' Make report into an Excel table so we can filter, etc.
@@ -126,10 +124,15 @@ Sub WellSky_Create_Participant_Information_Report()
         :=False, Transpose:=False
     ' Formula for first name
     Range("C2").Select
-    ActiveCell.Formula = _
+    'ActiveCell.Formula = _
         "=LET(" & Chr(10) & "   fnameTEST1, MID([@[Participant Name (Raw)]],FIND("","",[@[Participant Name (Raw)]])+2, 99)," & Chr(10) & _
         "   fnameTEST2,LEFT(fnameTEST1, FIND("" "",fnameTEST1)-1)," & Chr(10) & "   IF(" & Chr(10) & _
         "      NOT(ISERROR(fnameTEST2))," & Chr(10) & "      fnameTEST2," & Chr(10) & "      fnameTEST1" & _
+        Chr (10) & "   )" & Chr(10) & ")"
+    ActiveCell.Formula = _
+        "=LET(" & Chr(10) & "   fnameTEST1, MID([@[Participant Name (Raw)]],FIND("","",[@[Participant Name (Raw)]])+2, 99)," & Chr(10) & _
+        "   IF(" & Chr(10) & _
+        "      NOT(ISERROR(fnameTEST1))," & Chr(10) & "      fnameTEST1," & Chr(10) & "      [@[Participant Name (Raw)]]" & _
         Chr(10) & "   )" & Chr(10) & ")"
     ' Formula for last name
     Range("D2").Select
@@ -183,10 +186,10 @@ Sub WellSky_Create_Participant_Information_Report()
     seconds = Round(lastRowNum / 32) ' macro runs at 32 lines per second
     minutes = (seconds / 60) - 1
     seconds = (seconds Mod 60) - 1
-    MsgBox "Next we will format the participants' names, sexes at birth, and addresses." & vbNewLine & vbNewLine _
-        & "***NOTE***" & vbNewLine & "This may take awhile depending on the number of participants." & vbNewLine & vbNewLine _
-        & "This report has " & lastRowNum & " lines so it will take approximately " & minutes _
-        & " minutes and " & seconds & " seconds.", , shtName & ": Step 2"
+    'MsgBox "Next we will format the participants' names, sexes at birth, and addresses." & vbNewLine & vbNewLine _
+    '    & "***NOTE***" & vbNewLine & "This may take awhile depending on the number of participants." & vbNewLine & vbNewLine _
+    '    & "This report has " & lastRowNum & " lines so it will take approximately " & minutes _
+    '    & " minutes and " & seconds & " seconds.", , shtName & ": Step 2"
     ' ==============================================================================================================================
     
     ' Add columns for address transformation
@@ -210,9 +213,17 @@ Sub WellSky_Create_Participant_Information_Report()
     '      Trim whitespace from beginning and end
     '   Move the Address2, City, State, ZIP to their respective columns
     '       CSZ = City/State/Zipcode
+
+    ' We have to convert the Ptt IDs to numbers so they can be read by other macros
+    With Range("B2:B" & lastRowNum)
+        .NumberFormat = "General"
+        .Value = .Value
+    End With
     
     ' Select column D in the first row with raw address data
     Range("D2").Select
+    Dim tempLeftName, tempRightName As String
+    Dim delStartPos, delEndPos As Integer
     Do While ActiveCell.Row <= lastRowNum
         ' Do While loop will continue until it reaches the last row
         ' TRY TO KEEP `ActiveCell` IN COLUMN D (#4) and on the participant's last name, only move the ActiveCell pointer at the end of the loop
@@ -221,58 +232,154 @@ Sub WellSky_Create_Participant_Information_Report()
         ' TRANSFORM FIRST & LAST NAMES
         ' ============================
         
-        ' Transform first name (offset one column to the left)
+        ' Transform first name (offset one column to the left) <============================================== FIRSTNAME
         tempFname = ActiveCell.Offset(0, -1).Value
-        ' Detect and remove non-name info
+        ' Set default delStartPos and delEndPos, tempLeftName and tempRightName
+        delStartPos = Len(tempFname)
+        delEndPos = Len(tempFname)
+        tempLeftName = ""
+        tempRightName = ""
         If InStr(1, tempFname, "*", vbTextCompare) Then
-            tempFname = Left(tempFname, InStr(1, tempFname, "*", vbTextCompare) - 1)
+            delStartPos = InStr(1, tempFname, "*", vbTextCompare) - 1
+            delEndPos = Len(tempFname)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
-        If InStr(1, tempFname, "(", vbTextCompare) Then
-            tempFname = Left(tempFname, InStr(1, tempFname, "(", vbTextCompare) - 1)
+        ' Detect and remove parenthetical text
+        If InStr(tempFname, "(") > 0 Then
+            delStartPos = InStr(1, tempFname, "(", vbTextCompare) - 1
+            delEndPos = Len(tempFname) - InStr(delStartPos + 2, tempFname, ")", vbTextCompare)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
         ' Detect and remove double quotes & after
         If InStr(tempFname, Chr(34)) > 0 Then
-            tempFname = Replace(tempFname, Chr(34), "")
+            delStartPos = InStr(1, tempFname, Chr(34), vbTextCompare) - 1
+            delEndPos = Len(tempFname) - InStr(delStartPos + 2, tempFname, Chr(34), vbTextCompare)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
         If InStr(tempFname, Chr(132)) > 0 Then
-            tempFname = Replace(tempFname, Chr(132), "")
+            delStartPos = InStr(1, tempFname, Chr(132), vbTextCompare) - 1
+            delEndPos = Len(tempFname) - InStr(delStartPos + 2, tempFname, Chr(132), vbTextCompare)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
         If InStr(tempFname, Chr(147)) > 0 Then
-            tempFname = Replace(tempFname, Chr(147), "")
+            delStartPos = InStr(1, tempFname, Chr(147), vbTextCompare) - 1
+            delEndPos = Len(tempFname) - InStr(delStartPos + 2, tempFname, Chr(147), vbTextCompare)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
         If InStr(tempFname, Chr(148)) > 0 Then
-            tempFname = Replace(tempFname, Chr(148), "")
+            delStartPos = InStr(1, tempFname, Chr(148), vbTextCompare) - 1
+            delEndPos = Len(tempFname) - InStr(delStartPos + 2, tempFname, Chr(148), vbTextCompare)
+            ' Use delStartPos and delEndPos defined above to slice name
+            tempLeftName = Left(tempFname, delStartPos)
+            tempRightName = Right(tempFname, delEndPos)
+            ' Determine whether to keep both right and left
+            If tempLeftName = tempRightName Or delStartPos = delEndPos Or delEndPos = Len(tempFname) Then
+                tempFname = tempLeftName
+            Else
+                tempFname = tempLeftName & " " & tempRightName
+            End If
         End If
+        ' Remove middle name
+        tempFname = Trim(tempFname)
+        If InStr(tempFname, " ") Then
+            tempFname = Left(tempFname, InStrRev(tempFname, " "))
+        End If
+        tempFname = Trim(tempFname)
         ' Trim whitespace from beginning and end
-        ActiveCell.Offset(0, -1).Value = Trim(tempFname)
+        ActiveCell.Offset(0, -1).Value = tempFname
         
-        ' Now transform last name (current ActiveCell)
+        ' Now transform last name (current ActiveCell) <============================================== LASTNAME
         tempLname = ActiveCell.Value
+       ' Set default delStartPos and delEndPos, tempLeftName and tempRightName
+        delStartPos = Len(tempLname)
+        delEndPos = Len(tempLname)
+        tempLeftName = ""
+        tempRightName = ""
         ' Detect and remove non-name info
         If InStr(1, tempLname, "*", vbTextCompare) Then
-            tempLname = Left(tempLname, InStr(1, tempLname, "*", vbTextCompare) - 1)
+            delStartPos = InStr(1, tempLname, "*", vbTextCompare) - 1
+            delEndPos = Len(tempLname)
         End If
         If InStr(1, tempLname, "(", vbTextCompare) Then
-            tempLname = Left(tempLname, InStr(1, tempLname, "(", vbTextCompare) - 1)
+            delStartPos = InStr(1, tempLname, "(", vbTextCompare) - 1
+            delEndPos = Len(tempLname) - InStr(delStartPos + 2, tempLname, ")", vbTextCompare)
         End If
         ' Detect and remove double quotes & after
         If InStr(tempLname, Chr(34)) > 0 Then
-            tempLname = Replace(tempLname, Chr(34), "")
+            delStartPos = InStr(1, tempLname, Chr(34), vbTextCompare) - 1
+            delEndPos = Len(tempLname) - InStr(delStartPos + 2, tempLname, Chr(34), vbTextCompare)
         End If
         If InStr(tempLname, Chr(132)) > 0 Then
-            tempLname = Replace(tempLname, Chr(132), "")
+            delStartPos = InStr(1, tempLname, Chr(132), vbTextCompare) - 1
+            delEndPos = Len(tempLname) - InStr(delStartPos + 2, tempLname, Chr(132), vbTextCompare)
         End If
         If InStr(tempLname, Chr(147)) > 0 Then
-            tempLname = Replace(tempLname, Chr(147), "")
+            delStartPos = InStr(1, tempLname, Chr(147), vbTextCompare) - 1
+            delEndPos = Len(tempLname) - InStr(delStartPos + 2, tempLname, Chr(147), vbTextCompare)
         End If
         If InStr(tempLname, Chr(148)) > 0 Then
-            tempLname = Replace(tempLname, Chr(148), "")
+            delStartPos = InStr(1, tempLname, Chr(148), vbTextCompare) - 1
+            delEndPos = Len(tempLname) - InStr(delStartPos + 2, tempLname, Chr(148), vbTextCompare)
+        End If
+        ' Use delStartPos and delEndPos defined above to slice name
+        tempLeftName = Left(tempLname, delStartPos)
+        tempRightName = Right(tempLname, delEndPos)
+        
+        ' Determine whether to keep both right and left
+        If tempLeftName = tempRightName Then
+            tempLname = tempLeftName
+        ElseIf delStartPos = delEndPos Then
+            tempLname = tempLeftName
+        ElseIf delEndPos = Len(tempLname) Then
+            tempLname = tempLeftName
+        Else
+            tempLname = tempLeftName & " " & tempRightName
         End If
         ' Trim whitespace from beginning and end
         ActiveCell.Value = Trim(tempLname)
 
         ' ============================
-        ' TRANSFORM SEX AT BIRTH
+        ' TRANSFORM ASSIGNED SEX AT BIRTH
         ' ============================
         If ActiveCell.Offset(0, 3).Text = "#N/A" Then
             ActiveCell.Offset(0, 3).Value = "Unknown"
@@ -291,57 +398,63 @@ Sub WellSky_Create_Participant_Information_Report()
         ' TRANSFORM ADDRESSES
         ' ===================
 
-        ' No transform needed for Address1 data in column I (5 columns offset from column D)
+        ' Transform for Address1 data in column I (5 columns offset from column D)
         Address1 = ActiveCell.Offset(0, 5).Value
-        
-        ' There might be an Address2, i.e., an apartment number; let's look at the next row down ("Offset(1)")
-        ' If column D on this row is blank (i.e., not another Last Name), that means there is address data in column I (5 columns offset from column D)
-        If ActiveCell.Offset(1).Value = "" Then
-            If InStr(1, ActiveCell.Offset(1, 5).Value, ",") Then
-                ' If there is a comma character in this cell, then it probably isn't an apartment number; rather, it _
-                    is the CSZ
-                Address2 = ""
-                CSZ = ActiveCell.Offset(1, 5).Value
-            Else
-                ' Otherwise, check if this is a data entry error
-                ' If city/state does not match zipcode in WellSky, it only returns zipcode -- which _
-                    doesn't have a comma either!
-                ' Check if column D of the next line down starts with a First Name
-                ' If not, then there is Address2 and CSZ
-                If ActiveCell.Offset(2).Value = "" Then
-                    Address2 = Trim(ActiveCell.Offset(1, 5).Value)
-                    CSZ = Trim(ActiveCell.Offset(2, 5).Value)
-                Else
-                    ' Otherwise, there is an error in the data and we need to manually correct it; in the meantime, however, _
-                        we set CSZ as that incorrect data and tell the user (below) that it needs attention.
-                    CSZ = Trim(ActiveCell.Offset(1, 5).Value)
-                    Address2 = ""
-                End If
-            End If
-            ' Now we break apart city, state, and zip code
-            If Len(CSZ) > 0 Then
-                If InStr(1, CSZ, ",") Then
-                    City = Trim(Left(CSZ, InStr(1, CSZ, ",") - 1))
-                    State = Trim(Mid(CSZ, InStr(1, CSZ, ",") + 2, 2))
-                    Zipcode = Trim(Mid(CSZ, Len(City) + Len(State) + 3))
-                Else
-                    ' If there is *not* a comma in the CSZ, this is the signal from several lines above that _
-                        there is an error in the data
-                    City = CSZ
-                    State = "ERROR: City/State/Zip not formatted correctly."
-                    Zipcode = "ERROR:  City/State/Zip not formatted correctly."
-                End If
-            Else
-                ' Otherwise, there is no data in CSZ -- this would be a data error from WellSky and should be reported as such.
-                City = CSZ
-                State = "ERROR: City/State/Zip not formatted correctly. It's blank."
-                Zipcode = "ERROR: City/State/Zip not formatted correctly. It's blank."
-            End If
-        Else
+        If Address1 = "" Then
             Address2 = ""
-            City = "ERROR: No second line of address data."
-            State = "ERROR: No second line of address data."
-            Zipcode = "ERROR: No second line of address data."
+            City = ""
+            State = ""
+            Zipcode = ""
+        Else
+            ' There might be an Address2, i.e., an apartment number; let's look at the next row down ("Offset(1)")
+            ' If column D on this row is blank (i.e., not another Last Name), that means there is address data in column I (5 columns offset from column D)
+            If ActiveCell.Offset(1).Value = "" Then
+                If InStr(1, ActiveCell.Offset(1, 5).Value, ",") Then
+                    ' If there is a comma character in this cell, then it probably isn't an apartment number; rather, it _
+                        is the CSZ
+                    Address2 = ""
+                    CSZ = ActiveCell.Offset(1, 5).Value
+                Else
+                    ' Otherwise, check if this is a data entry error
+                    ' If city/state does not match zipcode in WellSky, it only returns zipcode -- which _
+                        doesn't have a comma either!
+                    ' Check if column D of the next line down starts with a First Name
+                    ' If not, then there is Address2 and CSZ
+                    If ActiveCell.Offset(2).Value = "" Then
+                        Address2 = Trim(ActiveCell.Offset(1, 5).Value)
+                        CSZ = Trim(ActiveCell.Offset(2, 5).Value)
+                    Else
+                        ' Otherwise, there is an error in the data and we need to manually correct it; in the meantime, however, _
+                            we set CSZ as that incorrect data and tell the user (below) that it needs attention.
+                        CSZ = Trim(ActiveCell.Offset(1, 5).Value)
+                        Address2 = ""
+                    End If
+                End If
+                ' Now we break apart city, state, and zip code
+                If Len(CSZ) > 0 Then
+                    If InStr(1, CSZ, ",") Then
+                        City = Trim(Left(CSZ, InStr(1, CSZ, ",") - 1))
+                        State = Trim(Mid(CSZ, InStr(1, CSZ, ",") + 2, 2))
+                        Zipcode = Trim(Mid(CSZ, Len(City) + Len(State) + 3))
+                    Else
+                        ' If there is *not* a comma in the CSZ, this is the signal from several lines above that _
+                            there is an error in the data
+                        City = CSZ
+                        State = "ERROR: City/State/Zip not formatted correctly."
+                        Zipcode = "ERROR:  City/State/Zip not formatted correctly."
+                    End If
+                Else
+                    ' Otherwise, there is no data in CSZ -- this would be a data error from WellSky and should be reported as such.
+                    City = CSZ
+                    State = "ERROR: City/State/Zip not formatted correctly. It's blank."
+                    Zipcode = "ERROR: City/State/Zip not formatted correctly. It's blank."
+                End If
+            Else
+                Address2 = ""
+                City = "ERROR: No second line of address data."
+                State = "ERROR: No second line of address data."
+                Zipcode = "ERROR: No second line of address data."
+            End If
         End If
         ' Now we enter Address1, Address2, City, State, and Zipcode in the correct cells
         ActiveCell.Offset(0, 5).Value = Address1    ' column I
@@ -366,7 +479,7 @@ Sub WellSky_Create_Participant_Information_Report()
     Range("B1").Select
     
     ' ==============================================================================================================================
-    MsgBox "Lastly, we will format the report and add our own header.", , shtName & ": Step 3"
+    'MsgBox "Lastly, we will format the report and add our own header.", , shtName & ": Step 3"
     ' ==============================================================================================================================
     
     ' Next, format the table...
@@ -378,9 +491,9 @@ Sub WellSky_Create_Participant_Information_Report()
     End With
     ' ...and autofit the row heights and column widths
     Range("B1:M" & lastRowNum).Select
-    For Each c In Selection.Columns
-        c.ColumnWidth = 255
-    Next c
+    For Each C In Selection.Columns
+        C.ColumnWidth = 255
+    Next C
     Selection.Columns.AutoFit ' address columns will be wide because of the error messages
     Selection.Rows.AutoFit
     
@@ -488,6 +601,7 @@ Sub WellSky_CleanReport_AppointmentActivity()
     With Application.ActiveSheet
         lastRowNum = .Cells(.Rows.Count, "A").End(xlUp).Row ' either col A or B for this
     End With
+    lastRowNum = lastRowNum + 1
     Range(Cells(1, 1), Cells(lastRowNum, 5)).Select ' columns A-E
     ActiveSheet.ListObjects.Add(xlSrcRange, Selection, , xlYes).Name = tblName
     ActiveSheet.ListObjects(tblName).TableStyle = "TableStyleMedium15"
@@ -516,15 +630,19 @@ Sub WellSky_CleanReport_AppointmentActivity()
         currentRow = ActiveCell.Row
         If IsEmpty(ActiveCell.Value) Then
             If IsEmpty(Cells(currentRow, 1).Value) And IsEmpty(Cells(currentRow, 3).Value) And IsEmpty(Cells(currentRow, 4).Value) Then
-                ' If so, this is another procedure code on this appointment, so copy ptt info from row above
-                Cells(currentRow - 1, 5).Value = Left(Cells(currentRow - 1, 5).Value, Len(Cells(currentRow - 1, 5).Value) - 1) 'remove comma
-                Range(Cells(currentRow - 1, 1), Cells(currentRow - 1, 4)).Select
-                Selection.Copy
-                Cells(currentRow, 1).Select
-                ActiveSheet.Paste
-                Application.CutCopyMode = False
-                Cells(currentRow, 2).Select ' reset selected cell to col B
-                amtReconciled = amtReconciled + 1
+                ' Only copy down the values if this row has information in it -- this is mostly for the lastRowNum, which is +1'd above to account for the case _
+                ' in which the last person on the WellSky report has two procedure codes
+                If IsEmpty(Cells(currentRow, 5).Value) = False Then
+                    ' If so, this is another procedure code on this appointment, so copy ptt info from row above
+                    Cells(currentRow - 1, 5).Value = Left(Cells(currentRow - 1, 5).Value, Len(Cells(currentRow - 1, 5).Value) - 1) 'remove comma
+                    Range(Cells(currentRow - 1, 1), Cells(currentRow - 1, 4)).Select
+                    Selection.Copy
+                    Cells(currentRow, 1).Select
+                    ActiveSheet.Paste
+                    Application.CutCopyMode = False
+                    Cells(currentRow, 2).Select ' reset selected cell to col B
+                    amtReconciled = amtReconciled + 1
+                End If
             Else
                 'If this is a separate appt but we don't have the PttID, use the subject's name and color the cell red.
                 ActiveCell.Value = Cells(currentRow, 1).Value
@@ -617,9 +735,9 @@ Sub WellSky_CleanReport_AppointmentActivity()
     End With
     ' ...and autofit the row heights and column widths
     Range("A1:E" & lastRowNum).Select
-    For Each c In Selection.Columns
-        c.ColumnWidth = 255
-    Next c
+    For Each C In Selection.Columns
+        C.ColumnWidth = 255
+    Next C
     Selection.Columns.AutoFit ' address columns will be wide because of the error messages
     Selection.Rows.AutoFit
     
